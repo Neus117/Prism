@@ -11,7 +11,7 @@
       </td>
       <td align="center" width="33%">
         <img src="assets/design/Prism_logo.jpg" width="250" alt="Final Logo"><br>
-        <sub>Final Version</sub>
+        <sub>Final Logo</sub>
       </td>
     </tr>
   </table>
