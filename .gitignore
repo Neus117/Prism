@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project specific
+input-video/
+temp_audio/
+output/
+models/
+ffmpeg.exe
