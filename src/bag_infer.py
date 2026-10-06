@@ -9,6 +9,7 @@ import sys
 import time
 import os
 import gc
+import locale
 from pathlib import Path
 
 import numpy as np
@@ -42,6 +43,60 @@ DEFAULT_ONNX_FILES = {
 # i7-12800HX: 16 物理核 (8P+8E), 24 线程
 INTRA_OP_THREADS = 12
 INTER_OP_THREADS = 1
+
+
+# =========================================================
+# 轻量 i18n：检测系统语言，零依赖，可按需扩展
+#   环境变量 PRISM_LANG=zh 或 en 可强制覆盖
+# =========================================================
+def _detect_lang() -> str:
+    env = os.environ.get("PRISM_LANG", "").strip().lower()
+    if env.startswith("zh"):
+        return "zh"
+    if env.startswith("en"):
+        return "en"
+    try:
+        code = (locale.getdefaultlocale()[0] or "en").lower()
+    except Exception:
+        code = "en"
+    return "zh" if code.startswith("zh") else "en"
+
+
+_LANG = _detect_lang()
+
+_T = {
+    "zh": {
+        "input":          "  输入:    {n:,} 采样点 ({sec:.1f}s)",
+        "chunks":         "  分块:    {n}",
+        "mode":           "  模式:    顺序单模型 (CPU 优化, 线程={threads})",
+        "load_model":     "\n  ── [{stem}] 加载模型 (provider=CPUExecutionProvider)...",
+        "loaded":         "  ✓ [{stem}] 加载完成，开始推理...",
+        "chunk_progress": "    [{stem}] 分块 {i}/{n}: {t:.1f}s",
+        "done_stem":      "  ✓ [{stem}] 完成，已释放 session",
+        "total":          "\n  总计:    {sec:.2f}s (RTF {rtf:.2f})",
+        "provider":       "  提供者:  CPU",
+        "loading_file":   "正在加载 {path} ...",
+        "wrote":          "  已写出 {path}",
+    },
+    "en": {
+        "input":          "  Input:   {n:,} samples ({sec:.1f}s)",
+        "chunks":         "  Chunks:  {n}",
+        "mode":           "  Mode:    Sequential single-model (CPU optimized, threads={threads})",
+        "load_model":     "\n  ── [{stem}] Loading model (provider=CPUExecutionProvider)...",
+        "loaded":         "  ✓ [{stem}] Loaded, starting inference...",
+        "chunk_progress": "    [{stem}] chunk {i}/{n}: {t:.1f}s",
+        "done_stem":      "  ✓ [{stem}] Done, session released",
+        "total":          "\n  Total:   {sec:.2f}s (RTF {rtf:.2f})",
+        "provider":       "  Provider: CPU",
+        "loading_file":   "Loading {path} ...",
+        "wrote":          "  wrote {path}",
+    },
+}
+
+
+def t(key: str, **kw) -> str:
+    s = _T[_LANG].get(key) or _T["en"].get(key) or key
+    return s.format(**kw) if kw else s
 
 
 def _make_transition_window(segment: int, overlap_frac: float = 0.25) -> np.ndarray:
@@ -88,9 +143,9 @@ def separate(mix: np.ndarray, sample_rate: int,
     n_chunks = max(1, (total_len + stride - 1) // stride)
 
     if verbose:
-        print(f"  input:  {total_len:,} samples ({total_len / sample_rate:.1f}s)")
-        print(f"  chunks: {n_chunks}")
-        print(f"  模式:   顺序单模型 (CPU 优化，线程数: {INTRA_OP_THREADS})")
+        print(t("input", n=total_len, sec=total_len / sample_rate))
+        print(t("chunks", n=n_chunks))
+        print(t("mode", threads=INTRA_OP_THREADS))
 
     window = _make_transition_window(N_SAMPLES)
     out = {stem: np.zeros((N_CHANNELS, total_len), dtype=np.float32) for stem in SOURCES}
@@ -100,12 +155,12 @@ def separate(mix: np.ndarray, sample_rate: int,
     for stem in SOURCES:
         target_row = SOURCES.index(stem)
         if verbose:
-            print(f"\n  ── [{stem}] 加载模型 (provider=CPUExecutionProvider)...")
+            print(t("load_model", stem=stem))
 
         session = _load_single_session(files[stem])
 
         if verbose:
-            print(f"  ✓ [{stem}] 加载完成，开始推理...")
+            print(t("loaded", stem=stem))
 
         stem_t0 = time.perf_counter()
         for i in range(n_chunks):
@@ -124,13 +179,14 @@ def separate(mix: np.ndarray, sample_rate: int,
             out[stem][:, start:end] += stems_out[target_row, :, :chunk_len] * w
 
             if verbose:
-                print(f"    [{stem}] chunk {i+1}/{n_chunks}: "
-                      f"{time.perf_counter() - stem_t0:.1f}s elapsed")
+                print(t("chunk_progress",
+                        stem=stem, i=i + 1, n=n_chunks,
+                        t=time.perf_counter() - stem_t0))
 
         del session
         gc.collect()
         if verbose:
-            print(f"  ✓ [{stem}] 完成，已释放 session")
+            print(t("done_stem", stem=stem))
 
     weight = np.zeros(total_len, dtype=np.float32)
     for i in range(n_chunks):
@@ -146,8 +202,8 @@ def separate(mix: np.ndarray, sample_rate: int,
     if verbose:
         elapsed = time.perf_counter() - t0
         rtf = elapsed / (total_len / sample_rate)
-        print(f"\n  total:  {elapsed:.2f}s (RTF {rtf:.2f})")
-        print(f"  provider: CPU")
+        print(t("total", sec=elapsed, rtf=rtf))
+        print(t("provider"))
 
     return out
 
@@ -170,7 +226,7 @@ def main() -> None:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading {args.input} ...")
+    print(t("loading_file", path=args.input))
     audio, sr = sf.read(str(args.input), dtype="float32", always_2d=True)
     audio = audio.T
     if audio.shape[0] == 1:
@@ -183,7 +239,7 @@ def main() -> None:
     for stem, audio_out in stems.items():
         out_path = args.out_dir / f"{stem}.wav"
         sf.write(str(out_path), audio_out.T, sr)
-        print(f"  wrote {out_path}")
+        print(t("wrote", path=out_path))
 
 
 if __name__ == "__main__":

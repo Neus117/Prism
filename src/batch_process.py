@@ -1,5 +1,6 @@
 import os
 import sys
+import locale
 import subprocess
 from pathlib import Path
 
@@ -25,6 +26,83 @@ MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 OVERWRITE_EXISTING = False
 
 
+# =========================================================
+# 轻量 i18n：检测系统语言，零依赖，可按需扩展
+# =========================================================
+def _detect_lang() -> str:
+    env = os.environ.get("PRISM_LANG", "").strip().lower()
+    if env.startswith("zh"):
+        return "zh"
+    if env.startswith("en"):
+        return "en"
+    try:
+        code = (locale.getdefaultlocale()[0] or "en").lower()
+    except Exception:
+        code = "en"
+    return "zh" if code.startswith("zh") else "en"
+
+
+_LANG = _detect_lang()
+
+_T = {
+    "zh": {
+        "banner_title":   "Prism —— 批量音频/视频分轨工具 (CPU)",
+        "working_dir":    "📂 工作目录: {path}",
+        "ffmpeg_ok":      "✅ FFmpeg 已就绪: {ver}",
+        "ffmpeg_missing": "❌ 错误：无法找到或运行 FFmpeg，请检查路径: {path}",
+        "start_media":    "\n🎬 开始处理{kind}: {name}",
+        "kind_video":     "视频",
+        "kind_audio":     "音频",
+        "skipped":        "⏭️  跳过：{name} 的分离结果已存在。",
+        "extract_audio":  "  🎵 正在提取音频并重采样至 44.1kHz 双声道 WAV...",
+        "resample":       "  🎵 正在重采样至 44.1kHz 双声道 WAV...",
+        "ffmpeg_fail":    "  ❌ FFmpeg 处理失败: {err}",
+        "empty_audio":    "  ❌ 提取的音频文件为空，跳过。",
+        "separating":     "  🧠 正在运行 HT-Demucs FT 分离...",
+        "separate_fail":  "  ❌ 分离失败: {err}",
+        "saving":         "  💾 正在保存分离后的音轨...",
+        "saved_one":      "    ✓ 已保存: {name}",
+        "done_media":     "✅ 完成: {name}",
+        "no_media":       "⚠️  在 {path} 中没有找到可处理的视频或音频文件。",
+        "found_media":    "📂 发现 {n} 个媒体文件，开始批量处理...",
+        "interrupted":    "\n🛑 用户中断操作。",
+        "unknown_error":  "\n❌ 处理 {name} 时发生未知错误: {err}",
+        "all_done":       "\n🎉 所有任务处理完毕！",
+        "press_enter":    "\n按回车退出...",
+    },
+    "en": {
+        "banner_title":   "Prism — Batch Audio/Video Source Separation Tool (CPU)",
+        "working_dir":    "📂 Working directory: {path}",
+        "ffmpeg_ok":      "✅ FFmpeg ready: {ver}",
+        "ffmpeg_missing": "❌ Error: FFmpeg not found or failed to run. Check path: {path}",
+        "start_media":    "\n🎬 Processing {kind}: {name}",
+        "kind_video":     "video",
+        "kind_audio":     "audio",
+        "skipped":        "⏭️  Skipped: separation results for {name} already exist.",
+        "extract_audio":  "  🎵 Extracting audio and resampling to 44.1kHz stereo WAV...",
+        "resample":       "  🎵 Resampling to 44.1kHz stereo WAV...",
+        "ffmpeg_fail":    "  ❌ FFmpeg failed: {err}",
+        "empty_audio":    "  ❌ Extracted audio is empty, skipping.",
+        "separating":     "  🧠 Running HT-Demucs FT separation...",
+        "separate_fail":  "  ❌ Separation failed: {err}",
+        "saving":         "  💾 Saving separated stems...",
+        "saved_one":      "    ✓ Saved: {name}",
+        "done_media":     "✅ Done: {name}",
+        "no_media":       "⚠️  No media files found in {path}.",
+        "found_media":    "📂 Found {n} media file(s), starting batch processing...",
+        "interrupted":    "\n🛑 User interrupted.",
+        "unknown_error":  "\n❌ Unknown error while processing {name}: {err}",
+        "all_done":       "\n🎉 All tasks completed!",
+        "press_enter":    "\nPress Enter to exit...",
+    },
+}
+
+
+def t(key: str, **kw) -> str:
+    s = _T[_LANG].get(key) or _T["en"].get(key) or key
+    return s.format(**kw) if kw else s
+
+
 def check_ffmpeg():
     try:
         result = subprocess.run(
@@ -32,10 +110,10 @@ def check_ffmpeg():
             capture_output=True, text=True, check=True,
             encoding="utf-8", errors="ignore",
         )
-        print(f"✅ FFmpeg 已就绪: {result.stdout.splitlines()[0]}")
+        print(t("ffmpeg_ok", ver=result.stdout.splitlines()[0]))
         return True
     except (FileNotFoundError, subprocess.CalledProcessError):
-        print(f"❌ 错误：无法找到或运行 FFmpeg，请检查路径: {FFMPEG_PATH}")
+        print(t("ffmpeg_missing", path=FFMPEG_PATH))
         return False
 
 
@@ -43,10 +121,10 @@ def process_media(media_path: Path):
     media_name = media_path.stem
     suffix = media_path.suffix.lower()
     is_video = suffix in VIDEO_EXTENSIONS
-    kind = "视频" if is_video else "音频"
+    kind = t("kind_video") if is_video else t("kind_audio")
 
-    print(f"\n{'='*50}")
-    print(f"🎬 开始处理{kind}: {media_path.name}")
+    print("=" * 60)
+    print(t("start_media", kind=kind, name=media_path.name))
 
     media_output_dir = OUTPUT_DIR / media_name
     media_output_dir.mkdir(parents=True, exist_ok=True)
@@ -54,15 +132,12 @@ def process_media(media_path: Path):
     if not OVERWRITE_EXISTING:
         existing_stems = list(media_output_dir.glob("*.wav"))
         if len(existing_stems) >= 4:
-            print(f"⏭️  跳过：{media_name} 的分离结果已存在。")
+            print(t("skipped", name=media_name))
             return
 
     # 中间文件统一用无损 WAV，避免二次压缩损失
     temp_audio_path = TEMP_AUDIO_DIR / f"{media_name}_temp.wav"
-    if is_video:
-        print(f"  🎵 正在提取音频并重采样至 44.1kHz 双声道 WAV...")
-    else:
-        print(f"  🎵 正在重采样至 44.1kHz 双声道 WAV...")
+    print(t("extract_audio") if is_video else t("resample"))
 
     ffmpeg_cmd = [
         FFMPEG_PATH, "-y",
@@ -80,39 +155,41 @@ def process_media(media_path: Path):
             text=True, encoding="utf-8", errors="ignore",
         )
     except subprocess.CalledProcessError as e:
-        print(f"  ❌ FFmpeg 处理失败: {e.stderr}")
+        print(t("ffmpeg_fail", err=e.stderr))
         return
 
     if not temp_audio_path.exists() or temp_audio_path.stat().st_size == 0:
-        print("  ❌ 提取的音频文件为空，跳过。")
+        print(t("empty_audio"))
         return
 
-    print(f"  🧠 正在运行 HT-Demucs FT 分离...")
+    print(t("separating"))
     try:
         stems = bag_infer.separate_all(str(temp_audio_path))
     except Exception as e:
-        print(f"  ❌ 分离失败: {str(e)}")
+        print(t("separate_fail", err=str(e)))
         if temp_audio_path.exists():
             temp_audio_path.unlink()
         return
 
-    print(f"  💾 正在保存分离后的音轨...")
+    print(t("saving"))
     import soundfile as sf
     for stem_name, audio_data in stems.items():
         out_file_name = f"{media_name}_{stem_name}.wav"
         out_file_path = media_output_dir / out_file_name
         sf.write(str(out_file_path), audio_data.T, bag_infer.SAMPLE_RATE)
-        print(f"    ✓ 已保存: {out_file_name}")
+        print(t("saved_one", name=out_file_name))
 
     if temp_audio_path.exists():
         temp_audio_path.unlink()
 
-    print(f"✅ 完成: {media_name}")
+    print(t("done_media", name=media_name))
 
 
 def main():
-    print("🚀 批量视频/音频人声分离工具启动 (CPU)...")
-    print(f"📂 工作目录: {BASE_DIR}")
+    print("=" * 60)
+    print("🚀 " + t("banner_title"))
+    print("=" * 60)
+    print(t("working_dir", path=BASE_DIR))
 
     INPUT_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -121,7 +198,7 @@ def main():
     if not check_ffmpeg():
         # 打包后如果用户没按回车就闪退，会看不到错误，这里等一下
         if getattr(sys, "frozen", False):
-            input("\n按回车退出...")
+            input(t("press_enter"))
         return
 
     media_files = sorted(
@@ -131,26 +208,26 @@ def main():
     )
 
     if not media_files:
-        print(f"⚠️  在 {INPUT_MEDIA_DIR} 中没有找到可处理的视频或音频文件。")
+        print(t("no_media", path=INPUT_MEDIA_DIR))
         if getattr(sys, "frozen", False):
-            input("\n按回车退出...")
+            input(t("press_enter"))
         return
 
-    print(f"📂 发现 {len(media_files)} 个媒体文件，开始批量处理...")
+    print(t("found_media", n=len(media_files)))
 
     for media_file in media_files:
         try:
             process_media(media_file)
         except KeyboardInterrupt:
-            print("\n🛑 用户中断操作。")
+            print(t("interrupted"))
             break
         except Exception as e:
-            print(f"\n❌ 处理 {media_file.name} 时发生未知错误: {str(e)}")
+            print(t("unknown_error", name=media_file.name, err=str(e)))
             continue
 
-    print("\n🎉 所有任务处理完毕！")
+    print(t("all_done"))
     if getattr(sys, "frozen", False):
-        input("\n按回车退出...")
+        input(t("press_enter"))
 
 
 if __name__ == "__main__":
