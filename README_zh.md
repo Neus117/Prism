@@ -230,7 +230,7 @@ Prism/
 │   ├── bag_infer.py            # ONNX 推理引擎
 │   └── paths.py                # 开发 / 冻结环境的路径解析
 ├── tools/
-│   ├── make_icon.py            # 由源图生成 assets/prism.ico
+│   ├── make_icon.py            # 生成 assets/prism.ico
 │   └── uninstall/
 │       └── uninstall.py        # 绿色卸载器（源码）
 ├── assets/
