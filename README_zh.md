@@ -1,3 +1,22 @@
+<div align="center">
+  <table>
+    <tr>
+      <td align="center" width="33%">
+        <img src="assets/design/Prism_logo_concept_1.png" width="250" alt="Concept 1"><br>
+        <sub>Concept 1</sub>
+      </td>
+      <td align="center" width="33%">
+        <img src="assets/design/Prism_logo_concept_2.png" width="250" alt="Concept 2"><br>
+        <sub>Concept 2</sub>
+      </td>
+      <td align="center" width="33%">
+        <img src="assets/design/Prism_logo.jpg" width="250" alt="Final Logo"><br>
+        <sub>Final Version</sub>
+      </td>
+    </tr>
+  </table>
+</div>
+
 # Prism —— 把混音折射成音轨
 
 > Refract your mix into stems.
